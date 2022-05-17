@@ -667,7 +667,7 @@ COMIN/MEDINP,ELECIN,THRESH,ELEMTB,USEFUL/;
 
 $INTEGER  ival,ival_media,ival_medfile,i,j,k,ival_ae,ival_ue,ival_ap,ival_up,
           ival_rho,ival_elements,ival_rhoz,ival_iunrst,ival_iaprim,ival_gasp,
-          ival_pz,ival_sterncid,
+          ival_pz,ival_sterncid,ival_ipot,
           ival_densityfile,medfile_error,ival_outfile,
           egs_open_file,lnblnk1,i_medfile,egs_get_unit,i_mederr,mindex,eindex,
           i_density,i01,length,i_outfile;
@@ -678,6 +678,7 @@ $LOGICAL  medfile_specified,densityfile_specified,elements_specified,
 $LOGICAL  iunrst_specified,stern_specified,iaprim_specified,
           gasp_specified,rho_specified,start_delim_found,end_delim_found,
           spec_by_pz,spec_by_rhoz,df_if_elem_mismatch($MXMED),
+          ipot_specified,
           df_if_rho_mismatch($MXMED);
 $LOGICAL  ex;
 
@@ -710,7 +711,7 @@ character*512 toUpper;
 "to the media library"
 $INTEGER nne_tmp,iaprim_tmp,epstfl_tmp,iunrst_tmp;
 $REAL rho_tmp,rhoz_tmp($MXEL),z_tmp($MXEL),pz_tmp($MXEL),ae_tmp,ap_tmp,
-      ue_tmp,up_tmp,gasp_tmp;
+      ue_tmp,up_tmp,gasp_tmp,ipot_tmp;
 $TYPE asym_tmp($MXEL);
 
 "for stuff read from the density correction file"
@@ -900,6 +901,7 @@ DO i=1,NMED[
    "set up defaults"
    elements_specified=.false.;
    rho_specified=.false.;
+   ipot_specified=.false.;
    densityfile_specified=.false.;
    stern_specified=.false.;
    iunrst_specified=.false.;
@@ -1010,6 +1012,24 @@ DO i=1,NMED[
    ]
 
    "now see what else is specified in the .egsinp file"
+   ival=ival+1;
+   ival_ipot=ival;
+   values_sought(ival) = 'ivalue';
+   type(ival)=1;
+   nvalue(ival)=1;
+   value_min(ival)=0.;
+   value_max(ival)=1e15;
+   default(ival)=-2.0;
+   "Default is set to -2 so that we get an"
+   "error if ivalue is negative"
+   nmin=ival_ipot;nmax=ival_ipot;
+   CALL GET_INPUT;
+   IF(error_flags(ival_ipot)=0)[
+      ipot_tmp=value(ival_ipot,1);
+      ipot_specified=.true.;
+      $WRITE_MEDERR(' I-value specified in .egsinp file.');
+   ]
+
    ival=ival+1;
    ival_sterncid=ival;
    values_sought(ival)='sterncid';
@@ -1518,6 +1538,12 @@ DO i=1,NMED[
 
        nne(i)=nne_tmp;
        rho(i)=rho_tmp;
+       "If ivalue not provided,"
+       "ipot(i) is set to -1"
+       ipot(i) = -1;
+       IF(ipot_specified)[
+         ipot(i) = ipot_tmp;
+       ]
 
        DO j=1,nne_tmp[
          inpasym(i,j)=asym_tmp(j);
@@ -1544,6 +1570,15 @@ DO i=1,NMED[
             pz4(i,j)=pz_tmp(j);
             rhoz(i,j)=pz(i,j)*wa(i,j);
             rhoz4(i,j)=pz4(i,j)*wa4(i,j);
+         ]
+       ]
+       iscompound(i) = 0;
+       IF(spec_by_pz)[
+         IF (nne(i)>1) ["check if there are > 1 elements"
+          iscompound(i) = 1;
+          "is_compound(i) is 1 only if medium is specified"
+          "with number of atoms."
+          "(From PIRS-701 page 269)"
          ]
        ]
 
@@ -1594,6 +1629,9 @@ DO i=1,nmed[
   write(ounit,'(a,24a1)')'   Medium: ',(media(j,i),j=1,24);
   write(ounit,'(a,24a1)')' Sterncid: ',(inpstrn(j,i),j=1,24);
   write(ounit,'(a,1p,e14.5,a)')'     rho: ',rho(i),' g/cm^3';
+  IF(~(ipot(i)=-1))[
+      write(ounit,'(a,1p,e14.5,a)')'     I-value: ',ipot(i),' eV';
+  ]
   write(ounit,'(a,24a4)')' Elements: ',(inpasym(i,j),j=1,nne(i));
   write(ounit,'(a,1p,12e14.5)')'    rhoz: ',(rhoz(i,j),j=1,nne(i));
   write(ounit,'(a,1p,12e14.5)')'      pz: ',(pz(i,j),j=1,nne(i));
